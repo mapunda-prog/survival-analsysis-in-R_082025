@@ -76,8 +76,7 @@ survival_data <- rebound_data %>%
     age_cat = case_when( 
       age >= 15 & age < 25   ~ "15-24",
       age >= 25 & age < 44 ~ "25-44",
-      age >= 45 & age < 64 ~ "45-64",
-      age >= 65   ~ "65+")
+      age >= 45   ~ "45+")
   ) %>%
   #distance category
   mutate(distance_cat = case_when(
