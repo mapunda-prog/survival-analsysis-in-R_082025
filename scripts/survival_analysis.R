@@ -26,12 +26,15 @@ pacman::p_load(
 
 # import data and explore -------------------------------------------------------------
 rebound_data <- import(here("data", "raw_data.csv"))
+clinical_data <- import(here("data", "clinical_stage.xlsx"))
+rebound_data2 <- left_join(rebound_data, clinical_data, by = "lookup_id")
+
 skimr::skim(rebound_data)
 glimpse(rebound_data)
 
 
 # data cleaning -----------------------------------------------------------
-survival_data <- rebound_data %>%
+survival_data <- rebound_data2 %>%
   #clean names
   clean_names() %>%
   #rename variables
@@ -45,7 +48,7 @@ survival_data <- rebound_data %>%
         marital_status, residence, residence_lvl,
         distance_hf, stigma, mental_illness, 
         alcohol_use, cd4_test_date, cd4_counts, 
-        who_clinical_stage, art_adherence, art_regimen,
+        clinical_stage, art_adherence, art_regimen,
         arv_code, arv_combination, hiv_care_appointment, 
         number_of_viral_load_test, low_level_viremia_at_basline,
         months_on_art, art_dispensing_day, 
@@ -74,9 +77,10 @@ survival_data <- rebound_data %>%
   # creating age/number groups
   mutate(
     age_cat = case_when( 
-      age >= 15 & age < 25   ~ "15-24",
-      age >= 25 & age < 44 ~ "25-44",
-      age >= 45   ~ "45+")
+      age >= 15 & age <= 24   ~ "15-24",
+      age >= 25 & age <= 44 ~ "25-44",
+      age >= 45 & age <= 64 ~ "45-64",
+      age >= 65   ~ "65+")
   ) %>%
   #distance category
   mutate(distance_cat = case_when(
@@ -97,6 +101,10 @@ survival_data <- rebound_data %>%
     arv_years >= 5 & arv_years <= 8 ~ "5-8 Years",
     arv_years >= 8 ~ "more than 8 Years")
          ) %>%
+  mutate(duration_cat2 = case_when(
+    arv_years < 3 ~ "less than 3 Years",
+    arv_years >= 3 ~ "more than 3 Years")
+  ) %>%
 
   # go through all columns replace empty cells with NA
   mutate(across(.cols = where(is.character),
@@ -104,7 +112,7 @@ survival_data <- rebound_data %>%
   #change character variables as factors
   mutate(across(.cols = where(is.character), as.factor)) %>%
   # recode values
-  mutate(who_clinical_stage = recode(who_clinical_stage,
+  mutate(clinical_stage = recode(clinical_stage,
          "1" = "clinical stage 1",
          "2" = "clinical stage 2",
          "3" = "clinical stage 3",
@@ -116,7 +124,13 @@ survival_data <- rebound_data %>%
     "Scheduled clinic visit" = "Scheduled visit",
     "Treatment supporter drug pick up" = "Scheduled visit",
     "Traced back after LTFU" = "Unscheduled visit",
-    "Unscheduled clinic visit" = "Unscheduled visit"))
+    "Unscheduled clinic visit" = "Unscheduled visit")) %>%
+  mutate(marital_cat = recode(marital_status,
+                                  "Divorced/Separated" = "living alone",
+                                  "Married" = "not living alone",
+                                  "Single" = "living alone",
+                                  "Widowed" = "living alone")) 
+  
 
 
 
@@ -285,7 +299,7 @@ survival_data %>%
 
 #WHO clinical stage
 survival_data %>%
-  group_by(who_clinical_stage) %>%
+  group_by(clinical_stage) %>%
   summarise(
     events = sum(event == 1),
     total_time = sum(time_months),
@@ -392,6 +406,34 @@ coxph(surv_obj ~ age_cat + client_category +  dispensing_cat
         art_refill_model, data = survival_data) %>%
   tbl_regression(exp = TRUE)
 
+#all variables
+all <- coxph(surv_obj ~ age_cat + client_category +  dispensing_cat
+      + distance_cat + appointment_cat + 
+        art_refill_model + sex + residence_lvl +
+        marital_status + DTG_cat + clinical_stage +
+        duration_cat2 + low_level_viremia_at_basline,  
+         data = survival_data) %>%
+  tbl_regression(exp = TRUE)
+
+
+few <- coxph(surv_obj ~ age_cat + client_category +  dispensing_cat
+      + distance_cat + appointment_cat + 
+        art_refill_model + sex + residence_lvl +
+        DTG_cat + low_level_viremia_at_basline,
+      data = survival_data) %>%
+  tbl_regression(exp = TRUE)
+
+
+
+
+
+coxph(surv_obj ~ age_cat + client_category +  dispensing_cat
+      + distance_cat + appointment_cat + 
+        art_refill_model + sex +
+        DTG_cat + clinical_stage +  residence_lvl +
+        low_level_viremia_at_basline,  
+      data = survival_data) %>%
+  tbl_regression(exp = TRUE)
 
 
 
@@ -399,18 +441,20 @@ coxph(surv_obj ~ age_cat + client_category +  dispensing_cat
 
 
 
+# univariate cox model ----------------------------------------------------
+vars <- c("age_cat", "client_category", "dispensing_cat", "distance_cat",
+         "appointment_cat", "art_refill_model", "sex", "DTG_cat",
+         "clinical_stage", "residence_lvl", "low_level_viremia_at_basline")
 
+# Loop through each variable and build univariable models
+tbls <- map(vars, ~ {
+  formula <- as.formula(paste("surv_obj ~", .x))
+  coxph(formula, data = survival_data) %>%
+    tbl_regression(exponentiate = TRUE, label = list(.x = .x))
+})
 
-
-
-
-
-
-
-
-
-
-
+# Combine into one tidy table
+combined_table <- tbl_merge(tbls, tab_spanner = vars)
 
 
 
