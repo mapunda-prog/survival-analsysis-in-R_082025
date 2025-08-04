@@ -273,7 +273,7 @@ survival_data %>%
 
 #Duration category
 survival_data %>%
-  group_by(duration_cat) %>%
+  group_by(duration_cat2) %>%
   summarise(
     events = sum(event == 1),
     total_time = sum(time_months),
@@ -307,7 +307,7 @@ survival_data %>%
     # Exact Poisson 95% CI - RECOMMENDED for survival analysis
     ci_lower = (qchisq(0.025, 2 * events) / (2 * total_time)) * 1000,
     ci_upper = (qchisq(0.975, 2 * (events + 1)) / (2 * total_time)) * 1000
-  )
+  ) %>% tbl_summary()
 
 
 #distance category
